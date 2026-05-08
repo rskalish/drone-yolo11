@@ -1,8 +1,8 @@
 # Drone Detection — YOLOv11
 
-Детекція дронів за допомогою YOLOv11. Датасет завантажується автоматично з Roboflow.
+YOLOv11-based drone detection trained on a Roboflow dataset. Dataset is downloaded and split automatically.
 
-## Встановлення
+## Setup
 
 ```bash
 python -m venv .venv
@@ -10,41 +10,41 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Тренування
+## Training
 
 ```bash
 python train.py
 ```
 
-Параметри можна змінити у `train.py` (MODEL_SIZE, EPOCHS, BATCH тощо).
+Training parameters can be adjusted in `train.py` (MODEL_SIZE, EPOCHS, BATCH, etc.).
 
-## Інференс
+## Inference
 
 ```bash
-# Тестові зображення
+# Test images
 python predict.py
 
-# Своє зображення або відео
+# Custom image or video
 python predict.py --source path/to/image.jpg
 python predict.py --source path/to/video.mp4
 
-# Веб-камера
+# Webcam
 python predict.py --source 0 --show
 ```
 
-## Структура проекту
+## Project structure
 
 ```
 drone-yolo11/
-├── train.py              # тренування
-├── predict.py            # інференс
-├── download_dataset.py   # завантаження та розбивка датасету
+├── train.py              # training script
+├── predict.py            # inference script
+├── download_dataset.py   # dataset download and split
 ├── requirements.txt
 └── README.md
 ```
 
-## Результати
+## Results
 
-Після тренування:
-- Модель: `drone_detection/yolo11s_run1/weights/best.pt`
-- Графіки: `drone_detection/yolo11s_run1/results.png`
+After training:
+- Best model: `drone_detection/yolo11s_run1/weights/best.pt`
+- Plots: `drone_detection/yolo11s_run1/results.png`

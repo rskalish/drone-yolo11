@@ -8,11 +8,11 @@ DEFAULT_SOURCE = os.path.join("data", "test", "images")
 
 def main():
     parser = argparse.ArgumentParser(description="Drone detection inference")
-    parser.add_argument("--model",  default=DEFAULT_MODEL,  help="Шлях до best.pt")
-    parser.add_argument("--source", default=DEFAULT_SOURCE, help="Папка/файл/відео/0 (веб-камера)")
+    parser.add_argument("--model",  default=DEFAULT_MODEL,  help="Path to best.pt")
+    parser.add_argument("--source", default=DEFAULT_SOURCE, help="Folder/file/video/0 (webcam)")
     parser.add_argument("--conf",   type=float, default=0.25)
     parser.add_argument("--iou",    type=float, default=0.45)
-    parser.add_argument("--show",   action="store_true", help="Показати результат у вікні")
+    parser.add_argument("--show",   action="store_true", help="Show results in a window")
     args = parser.parse_args()
 
     model = YOLO(args.model)
@@ -28,7 +28,7 @@ def main():
         exist_ok=True,
     )
 
-    print("[INFO] Результати збережено в predictions/run/")
+    print("[INFO] Results saved to predictions/run/")
 
 
 if __name__ == "__main__":

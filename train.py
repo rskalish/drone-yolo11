@@ -7,7 +7,7 @@ YAML_PATH    = os.path.join("data", "data.yaml")
 MODEL_SIZE   = "yolo11s"       # n / s / m / l / x
 EPOCHS       = 100
 IMGSZ        = 640
-BATCH        = 8               # зменш до 4 якщо мало VRAM
+BATCH        = 8               # reduce to 4 if low VRAM
 PATIENCE     = 20
 PROJECT      = "drone_detection"
 RUN_NAME     = f"{MODEL_SIZE}_run1"
@@ -17,7 +17,7 @@ def main():
     download()
 
     device = 0 if torch.cuda.is_available() else "cpu"
-    print(f"[INFO] Пристрій: {'GPU ' + torch.cuda.get_device_name(0) if device == 0 else 'CPU'}")
+    print(f"[INFO] Device: {'GPU ' + torch.cuda.get_device_name(0) if device == 0 else 'CPU'}")
 
     model = YOLO(f"{MODEL_SIZE}.pt")
 
@@ -45,9 +45,9 @@ def main():
     )
 
     best_path = os.path.join(PROJECT, RUN_NAME, "weights", "best.pt")
-    print(f"\n[INFO] Тренування завершено. Найкраща модель: {best_path}")
+    print(f"\n[INFO] Training complete. Best model: {best_path}")
 
-    print("[INFO] Валідація...")
+    print("[INFO] Validating...")
     best = YOLO(best_path)
     metrics = best.val(data=YAML_PATH)
 

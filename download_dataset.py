@@ -14,20 +14,20 @@ DATASET_DIR = "data"
 
 def download():
     if os.path.exists(DATASET_DIR):
-        print(f"[INFO] Датасет вже існує: {DATASET_DIR}/")
+        print(f"[INFO] Dataset already exists: {DATASET_DIR}/")
         return
 
     if not os.path.exists(DATASET_ZIP):
-        print("[INFO] Завантаження датасету...")
+        print("[INFO] Downloading dataset...")
         urllib.request.urlretrieve(DATASET_URL, DATASET_ZIP)
-        print("[INFO] Завантажено.")
+        print("[INFO] Download complete.")
 
-    print("[INFO] Розпакування...")
+    print("[INFO] Extracting...")
     with zipfile.ZipFile(DATASET_ZIP, "r") as z:
         z.extractall(DATASET_RAW)
 
     _split_dataset()
-    print(f"[INFO] Датасет готовий: {DATASET_DIR}/")
+    print(f"[INFO] Dataset ready: {DATASET_DIR}/")
 
 
 def _split_dataset(train_ratio=0.70, val_ratio=0.20):
@@ -53,7 +53,7 @@ def _split_dataset(train_ratio=0.70, val_ratio=0.20):
         "test":  all_images[n_train + n_val:],
     }
 
-    print(f"[INFO] Розбивка: train={n_train} | valid={n_val} | test={n_test}")
+    print(f"[INFO] Split: train={n_train} | valid={n_val} | test={n_test}")
 
     for split, imgs in splits.items():
         os.makedirs(os.path.join(DATASET_DIR, split, "images"), exist_ok=True)

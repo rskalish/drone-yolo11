@@ -1,4 +1,4 @@
-# Датасет і артефакти
+# Dataset and training artifacts
 dataset.zip
 dataset_raw/
 data/
@@ -6,6 +6,8 @@ drone_detection/
 predictions/
 *.pt
 runs/
+results/
+figures/
 
 # Python
 __pycache__/

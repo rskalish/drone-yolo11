@@ -114,10 +114,10 @@ def main():
     # ---- print summary ----
     if t2:
         print("\n=== Table 2: Overall comparison ===")
-        print(f"{'model':<32} {'P':>6} {'R':>6} {'F1':>6} {'mAP@.5':>7}")
+        print(f"{'model':<32} {'P':>6} {'R':>6} {'F1':>6} {'mAP@.5':>7} {'mAP@.5:.95':>11}")
         for r in t2:
             print(f"{r['model']:<32} {r['precision']:>6} {r['recall']:>6} "
-                  f"{r['f1']:>6} {r['map50']:>7}")
+                  f"{r['f1']:>6} {r['map50']:>7} {r['map50_95']:>11}")
 
     if t3:
         print("\n=== Table 3: Recall by size group ===")

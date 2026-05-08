@@ -80,7 +80,7 @@ runs/
 
 results/
   table1_distribution.csv     -- sample distribution by size group
-  table2_overall.csv          -- P, R, F1, mAP per model
+  table2_overall.csv          -- P, R, F1, mAP@0.5, mAP@0.5:0.95 per model
   table3_recall_by_size.csv   -- Recall per size group
   localization_quality.csv    -- mean centre error per size group
   <run>.json                  -- raw counts per run
@@ -107,6 +107,16 @@ compare_runs.py         -- aggregate Tables 2 and 3
 figures.py              -- publication figures
 requirements.txt
 ```
+
+## Metrics
+
+* **Precision / Recall / F1** at IoU 0.5, conf 0.25
+* **mAP@0.5** — mean Average Precision at a single IoU threshold of 0.5
+* **mAP@0.5:0.95** — primary YOLO/COCO metric. Averages mAP across 10
+  IoU thresholds (0.5, 0.55, ..., 0.95). Stricter and more sensitive to
+  localization quality than mAP@0.5; the small gains the adaptive loss
+  produces here typically reflect tighter bounding boxes on small
+  objects.
 
 ## Notes for Colab
 

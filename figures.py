@@ -67,12 +67,12 @@ def fig_overall_metrics(results_dir: str, fig_dir: str):
     if not csv_path.exists():
         print(f"[WARN] {csv_path} missing"); return
     df = pd.read_csv(csv_path)
-    metrics = ["precision", "recall", "f1", "map50"]
-    labels = ["Precision", "Recall", "F1", "mAP@0.5"]
+    metrics = ["precision", "recall", "f1", "map50", "map50_95"]
+    labels = ["Precision", "Recall", "F1", "mAP@0.5", "mAP@0.5:0.95"]
     x = np.arange(len(metrics))
     w = 0.8 / max(len(df), 1)
 
-    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig, ax = plt.subplots(figsize=(11, 4.8))
     for i, row in df.iterrows():
         is_adapt = "adaptive" in row["model"].lower()
         color = "#d6604d" if is_adapt else "#4393c3"
@@ -85,7 +85,7 @@ def fig_overall_metrics(results_dir: str, fig_dir: str):
                     f"{row[m]:.2f}", ha="center", va="bottom", fontsize=8)
 
     ax.set_xticks(x); ax.set_xticklabels(labels)
-    ax.set_ylim(0.5, 1.0); ax.set_ylabel("Value")
+    ax.set_ylim(0.0, 1.0); ax.set_ylabel("Value")
     ax.set_title("Overall detection metrics — baseline vs adaptive loss")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(axis="y", linestyle=":", alpha=0.4)

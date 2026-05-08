@@ -3,8 +3,8 @@ import glob
 import shutil
 import random
 import yaml
-import urllib.request
 import zipfile
+import requests
 
 DATASET_URL = "https://app.roboflow.com/ds/3B4hCrEJ8A?key=ymcXaw0qAq"
 DATASET_ZIP = "dataset.zip"
@@ -19,8 +19,17 @@ def download():
 
     if not os.path.exists(DATASET_ZIP):
         print("[INFO] Downloading dataset...")
-        urllib.request.urlretrieve(DATASET_URL, DATASET_ZIP)
-        print("[INFO] Download complete.")
+        response = requests.get(DATASET_URL, stream=True, allow_redirects=True)
+        response.raise_for_status()
+        total = int(response.headers.get("content-length", 0))
+        received = 0
+        with open(DATASET_ZIP, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                received += len(chunk)
+                if total:
+                    print(f"\r[INFO] {received / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB", end="")
+        print("\n[INFO] Download complete.")
 
     print("[INFO] Extracting...")
     with zipfile.ZipFile(DATASET_ZIP, "r") as z:

@@ -1,0 +1,19 @@
+# Датасет і артефакти
+dataset.zip
+dataset_raw/
+data/
+drone_detection/
+predictions/
+*.pt
+runs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# PyCharm
+.idea/
+*.iml

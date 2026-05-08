@@ -19,6 +19,17 @@ import torch
 from download_dataset import download
 
 YAML_PATH = os.path.join("data", "data.yaml")
+DRIVE_RUNS = "/content/drive/MyDrive/drone_yolo11/runs"
+
+
+def get_project_dir():
+    """Write directly to Drive if running in Colab and Drive is mounted."""
+    if os.path.isdir("/content/drive/MyDrive"):
+        os.makedirs(DRIVE_RUNS, exist_ok=True)
+        print(f"[INFO] Saving runs to Drive: {DRIVE_RUNS}")
+        return DRIVE_RUNS
+    return "runs"
+
 
 ALL_RUNS = [
     {"model": "yolov8s.pt", "name": "yolov8s_baseline", "adaptive": False},
@@ -37,7 +48,7 @@ def parse_args():
     p.add_argument("--imgsz",    type=int,   default=640)
     p.add_argument("--batch",    type=int,   default=16)
     p.add_argument("--patience", type=int,   default=20)
-    p.add_argument("--project",  default="runs")
+    p.add_argument("--project",  default=None, help="save dir (auto: Drive in Colab, runs/ locally)")
     p.add_argument("--adaptive", action="store_true")
     p.add_argument("--a0",       type=float, default=32 * 32)
     p.add_argument("--w-max",    type=float, default=4.0)
@@ -64,6 +75,7 @@ def train_one(model_name, run_name, adaptive, args, device):
 
     from ultralytics import YOLO
     model = YOLO(model_name)
+    project = args.project or get_project_dir()
     model.train(
         data=YAML_PATH,
         epochs=args.epochs,
@@ -81,20 +93,22 @@ def train_one(model_name, run_name, adaptive, args, device):
         scale=0.5,
         seed=args.seed,
         deterministic=True,
-        project=args.project,
+        project=project,
         name=run_name,
         exist_ok=True,
         device=device,
         plots=True,
         save=True,
+        save_period=10,  # checkpoint every 10 epochs
     )
 
-    best_path = os.path.join(args.project, run_name, "weights", "best.pt")
+    project = args.project or get_project_dir()
+    best_path = os.path.join(project, run_name, "weights", "best.pt")
     print(f"\n[INFO] Training complete: {best_path}")
 
     from ultralytics import YOLO as _YOLO
     best = _YOLO(best_path)
-    metrics = best.val(data=YAML_PATH, project=args.project,
+    metrics = best.val(data=YAML_PATH, project=project,
                        name=f"{run_name}_val", exist_ok=True)
     print(f"\n{'=' * 40}")
     print(f"Run:       {run_name}")
@@ -110,11 +124,21 @@ def main():
     download()
     device = get_device()
 
+    project = args.project or get_project_dir()
+
     if args.all:
         print("\n[INFO] Running all 4 experiments\n")
         for cfg in ALL_RUNS:
-            print(f"\n>>> {cfg['name']} (adaptive={cfg['adaptive']})\n")
-            train_one(cfg["model"], cfg["name"], cfg["adaptive"], args, device)
+            # skip if already finished
+            best_pt = os.path.join(project, cfg["name"], "weights", "best.pt")
+            if os.path.exists(best_pt):
+                print(f"[INFO] Skipping {cfg['name']} (best.pt already exists)")
+                continue
+            # resume from last.pt if exists
+            last_pt = os.path.join(project, cfg["name"], "weights", "last.pt")
+            model_arg = last_pt if os.path.exists(last_pt) else cfg["model"]
+            print(f"\n>>> {cfg['name']} (adaptive={cfg['adaptive']}, model={model_arg})\n")
+            train_one(model_arg, cfg["name"], cfg["adaptive"], args, device)
     else:
         name = args.name
         if name is None:

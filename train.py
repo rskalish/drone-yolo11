@@ -74,35 +74,41 @@ def train_one(model_name, run_name, adaptive, args, device):
         enable_adaptive_loss(a0=args.a0, w_max=args.w_max)
 
     from ultralytics import YOLO
-    model = YOLO(model_name)
     project = args.project or get_project_dir()
-    model.train(
-        data=YAML_PATH,
-        epochs=args.epochs,
-        imgsz=args.imgsz,
-        batch=args.batch,
-        patience=args.patience,
-        lr0=0.01,
-        lrf=0.001,
-        momentum=0.937,
-        weight_decay=0.0005,
-        warmup_epochs=3,
-        mosaic=1.0,
-        fliplr=0.5,
-        degrees=5.0,
-        scale=0.5,
-        seed=args.seed,
-        deterministic=True,
-        project=project,
-        name=run_name,
-        exist_ok=True,
-        device=device,
-        plots=True,
-        save=True,
-        save_period=10,  # checkpoint every 10 epochs
-    )
+    is_resume = model_name.endswith("last.pt") and os.path.exists(model_name)
 
-    project = args.project or get_project_dir()
+    model = YOLO(model_name)
+
+    if is_resume:
+        print(f"[INFO] Resuming from {model_name}")
+        model.train(resume=True, device=device)
+    else:
+        model.train(
+            data=YAML_PATH,
+            epochs=args.epochs,
+            imgsz=args.imgsz,
+            batch=args.batch,
+            patience=args.patience,
+            lr0=0.01,
+            lrf=0.001,
+            momentum=0.937,
+            weight_decay=0.0005,
+            warmup_epochs=3,
+            mosaic=1.0,
+            fliplr=0.5,
+            degrees=5.0,
+            scale=0.5,
+            seed=args.seed,
+            deterministic=True,
+            project=project,
+            name=run_name,
+            exist_ok=True,
+            device=device,
+            plots=True,
+            save=True,
+            save_period=10,
+        )
+
     best_path = os.path.join(project, run_name, "weights", "best.pt")
     print(f"\n[INFO] Training complete: {best_path}")
 

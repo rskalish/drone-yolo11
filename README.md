@@ -4,83 +4,121 @@ Reference implementation for the experiment in
 *"Adaptive loss function for improving detection of small-scale UAVs"*.
 
 The adaptive loss multiplies each training sample's loss by
-`w_i = min(A_0 / A_i, w_max)`, where `A_i` is the bounding box area in
-pixels, `A_0 = 32 × 32 = 1024`, `w_max = 4`. Small targets receive a
-larger gradient signal, while losses for objects with `A_i ≥ A_0` are
-unchanged.
 
-## Setup
+    w_i = min(A_0 / A_i, w_max),     A_0 = 32 × 32 = 1024 px,  w_max = 4
+
+where `A_i` is the bounding-box area in pixels. Small targets receive a
+larger gradient signal; losses for objects with `A_i ≥ A_0` are
+unchanged. Implementation hooks the `TaskAlignedAssigner` so it works
+across Ultralytics versions and propagates to both bbox and cls losses.
+
+---
+
+## One-command end-to-end run
+
+| Environment | Default epochs | Output |
+|---|---|---|
+| Local (PyCharm CE, M3 Air) | **10** | `./runs/`, `./results/`, `./figures/` |
+| Google Colab (T4 / L4 / A100) | **80** | `/content/drive/MyDrive/drone_yolo11/...` |
 
 ```bash
+python experiment.py
+```
+
+Trains all 4 models, generates Tables 1–3 and all figures.
+
+Override defaults if needed:
+```bash
+python experiment.py --epochs 30 --batch 8
+python experiment.py --skip-train       # only evaluation + figures
+```
+
+---
+
+## PyCharm CE (local)
+
+```bash
+git clone https://github.com/rskalish/drone-yolo11.git
+cd drone-yolo11
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+
+python experiment.py               # 10 epochs per model
 ```
 
-The dataset (DUT Anti-UAV style, 1 class `drones`) is downloaded and
-split into `train / valid / test` automatically on first run.
-
-## Reproducing the article experiments
-
-The 4 runs below reproduce Tables 2 and 3 of the article.
+Apple Silicon (M3 Air) uses MPS automatically. To prevent the Mac from
+sleeping during training:
 
 ```bash
-# Baselines
-python train.py --model yolov8s.pt --name yolov8s_baseline
-python train.py --model yolo11s.pt --name yolo11s_baseline
-
-# Adaptive loss
-python train.py --model yolov8s.pt --name yolov8s_adaptive --adaptive
-python train.py --model yolo11s.pt --name yolo11s_adaptive --adaptive
+caffeinate -i python experiment.py
 ```
 
-Default training matches the article: 80 epochs, imgsz 640, batch 16,
-seed 42, `A_0 = 1024`, `w_max = 4`.
+> 10 epochs on M3 Air: ~30–40 min per model, ~2–3 h for all 4.
 
-## Computing tables and figures
+---
 
+## Google Colab
+
+`Runtime → Change runtime type → A100` (or L4 / T4).
+
+**Cell 1** — mount Drive and clone:
+```python
+from google.colab import drive
+drive.mount("/content/drive", force_remount=True)
+```
+
+**Cell 2** — clone and install:
 ```bash
-# Table 1: sample distribution by size group
-python dataset_stats.py
-
-# Per-size-group Recall (run for every model)
-python evaluate_size.py --weights runs/yolov8s_baseline/weights/best.pt \
-                        --out results/yolov8s_baseline.json
-python evaluate_size.py --weights runs/yolov8s_adaptive/weights/best.pt \
-                        --out results/yolov8s_adaptive.json
-python evaluate_size.py --weights runs/yolo11s_baseline/weights/best.pt \
-                        --out results/yolo11s_baseline.json
-python evaluate_size.py --weights runs/yolo11s_adaptive/weights/best.pt \
-                        --out results/yolo11s_adaptive.json
-
-# Tables 2 + 3 (CSV in results/)
-python compare_runs.py \
-    --runs   yolov8s_baseline yolov8s_adaptive yolo11s_baseline yolo11s_adaptive \
-    --labels "YOLOv8s baseline" "YOLOv8s + adaptive loss" \
-             "YOLOv11s baseline" "YOLOv11s + adaptive loss"
-
-# Article figures (figures/)
-python figures.py \
-    --runs   yolov8s_baseline yolov8s_adaptive yolo11s_baseline yolo11s_adaptive \
-    --labels "YOLOv8s baseline" "YOLOv8s + adaptive" \
-             "YOLOv11s baseline" "YOLOv11s + adaptive" \
-    --n-examples 6
+%cd /content
+!rm -rf drone-yolo11
+!git clone https://github.com/rskalish/drone-yolo11.git
+%cd drone-yolo11
+!pip install -r requirements.txt -q
 ```
+
+**Cell 3** — run everything (saves directly to Drive):
+```bash
+!python experiment.py
+```
+
+If the Colab session disconnects, just re-run Cell 1 → 2 → 3. Training
+auto-resumes from `last.pt` on Drive and skips already-completed runs.
+
+---
+
+## File layout
+
+```
+config.py             -- environment detection + shared constants
+utils.py              -- label parsing, IoU, size groups, device pick
+adaptive_loss.py      -- AdaptiveDetectionLoss + enable_adaptive_loss()
+download_dataset.py   -- dataset fetch + train/valid/test split
+
+train.py              -- training entry point (--all, --adaptive)
+predict.py            -- inference on image / video / webcam
+dataset_stats.py      -- Table 1 (size distribution)
+evaluate_size.py      -- per-size Recall + localization error
+compare_runs.py       -- aggregate Tables 2 and 3
+figures.py            -- publication figures
+experiment.py         -- orchestrator: runs everything end-to-end
+
+requirements.txt
+```
+
+---
 
 ## Outputs
 
 ```
-runs/
-  <run_name>/
-    weights/best.pt         -- final model
-    results.csv             -- per-epoch losses and metrics
-    results.png             -- ultralytics default training curves
-    PR_curve.png            -- precision-recall curve
-    confusion_matrix.png
+runs/<run_name>/                                 -- per-run artefacts
+  weights/best.pt        weights/last.pt
+  results.csv            results.png
+  PR_curve.png           confusion_matrix.png
 
 results/
   table1_distribution.csv     -- sample distribution by size group
-  table2_overall.csv          -- P, R, F1, mAP@0.5, mAP@0.5:0.95 per model
+  table2_overall.csv          -- P, R, F1, mAP@0.5, mAP@0.5:0.95
   table3_recall_by_size.csv   -- Recall per size group
   localization_quality.csv    -- mean centre error per size group
   <run>.json                  -- raw counts per run
@@ -94,32 +132,31 @@ figures/
   pr_curves/                  -- collected PR curves
 ```
 
-## File layout
-
-```
-adaptive_loss.py        -- AdaptiveDetectionLoss + enable_adaptive_loss()
-train.py                -- training entry point (--adaptive toggle)
-predict.py              -- inference on image / video / webcam
-download_dataset.py     -- dataset fetch + split
-dataset_stats.py        -- Table 1 (size distribution)
-evaluate_size.py        -- per-size Recall + localization error
-compare_runs.py         -- aggregate Tables 2 and 3
-figures.py              -- publication figures
-requirements.txt
-```
+---
 
 ## Metrics
 
 * **Precision / Recall / F1** at IoU 0.5, conf 0.25
 * **mAP@0.5** — mean Average Precision at a single IoU threshold of 0.5
 * **mAP@0.5:0.95** — primary YOLO/COCO metric. Averages mAP across 10
-  IoU thresholds (0.5, 0.55, ..., 0.95). Stricter and more sensitive to
-  localization quality than mAP@0.5; the small gains the adaptive loss
-  produces here typically reflect tighter bounding boxes on small
-  objects.
+  IoU thresholds (0.5, 0.55, …, 0.95). Stricter and more sensitive to
+  localization quality than mAP@0.5.
 
-## Notes for Colab
+---
 
-Training on CPU is impractical. For Colab use `Runtime → Change runtime
-type → T4 GPU`, clone this repo, then run the same commands.
-A T4 finishes one 80-epoch run in ~1.5–2 hours.
+## Single-run examples
+
+```bash
+# Train one configuration:
+python train.py --model yolov8s.pt
+python train.py --model yolov8s.pt --adaptive
+python train.py --model yolo11s.pt --adaptive
+
+# Evaluate per-size Recall:
+python evaluate_size.py --weights runs/yolov8s_adaptive/weights/best.pt
+
+# Inference:
+python predict.py --source data/test/images --show
+python predict.py --source path/to/video.mp4
+python predict.py --source 0 --show               # webcam
+```

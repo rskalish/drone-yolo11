@@ -1,19 +1,16 @@
 """Generate publication-ready figures for the article.
 
-Produces:
-    figures/fig_recall_by_size.png   -- bar chart, Table 3 visualization
-    figures/fig_overall_metrics.png  -- bar chart, Table 2 visualization
-    figures/fig_training_curves.png  -- merged loss + mAP curves
-    figures/fig_pr_curves.png        -- copies of ultralytics PR curves
-    figures/detections/<run>/<img>   -- test images with predicted boxes
-
-Run after compare_runs.py and after each run has its results JSON.
+Outputs into figures/ (or Drive/figures/ in Colab):
+    fig_recall_by_size.png      -- bar chart of Table 3
+    fig_overall_metrics.png     -- bar chart of Table 2
+    fig_training_curves.png     -- merged loss + mAP curves
+    fig_detections_panel.png    -- side-by-side detection comparison
+    pr_curves/                  -- copies of ultralytics PR curves
+    detections/<run>/           -- per-image annotated detections
 """
 
 import argparse
-import csv
 import glob
-import os
 import shutil
 from pathlib import Path
 
@@ -23,14 +20,21 @@ import numpy as np
 import pandas as pd
 from ultralytics import YOLO
 
+from config import DATA_DIR, LABELS, RUNS, get_figures_dir, get_results_dir, get_runs_dir
+
 plt.rcParams.update({
     "font.size": 11, "figure.dpi": 130, "savefig.dpi": 200,
     "axes.spines.top": False, "axes.spines.right": False,
 })
 
 
-def fig_recall_by_size(results_dir: str, fig_dir: str):
-    csv_path = Path(results_dir) / "table3_recall_by_size.csv"
+def _bar_color(model_name: str) -> tuple:
+    is_adapt = "adaptive" in model_name.lower()
+    return ("#d6604d" if is_adapt else "#4393c3", "//" if is_adapt else None)
+
+
+def fig_recall_by_size(results_dir: Path, fig_dir: Path):
+    csv_path = results_dir / "table3_recall_by_size.csv"
     if not csv_path.exists():
         print(f"[WARN] {csv_path} missing"); return
     df = pd.read_csv(csv_path)
@@ -41,12 +45,11 @@ def fig_recall_by_size(results_dir: str, fig_dir: str):
 
     fig, ax = plt.subplots(figsize=(9, 4.5))
     for i, row in df.iterrows():
-        is_adapt = "adaptive" in row["model"].lower()
-        color = "#d6604d" if is_adapt else "#4393c3"
-        bars = ax.bar(x + i * w - 0.4 + w / 2, [row[g] for g in groups],
-                      w, label=row["model"], color=color,
-                      edgecolor="black", linewidth=0.4,
-                      hatch="//" if is_adapt else None)
+        color, hatch = _bar_color(row["model"])
+        bars = ax.bar(x + i * w - 0.4 + w / 2,
+                      [row[g] for g in groups], w,
+                      label=row["model"], color=color,
+                      edgecolor="black", linewidth=0.4, hatch=hatch)
         for b, g in zip(bars, groups):
             ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.005,
                     f"{row[g]:.2f}", ha="center", va="bottom", fontsize=8)
@@ -57,13 +60,14 @@ def fig_recall_by_size(results_dir: str, fig_dir: str):
     ax.set_title("Recall by object size — baseline vs adaptive loss")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(axis="y", linestyle=":", alpha=0.4)
-    out = Path(fig_dir) / "fig_recall_by_size.png"
+
+    out = fig_dir / "fig_recall_by_size.png"
     plt.tight_layout(); plt.savefig(out); plt.close()
     print(f"[INFO] saved {out}")
 
 
-def fig_overall_metrics(results_dir: str, fig_dir: str):
-    csv_path = Path(results_dir) / "table2_overall.csv"
+def fig_overall_metrics(results_dir: Path, fig_dir: Path):
+    csv_path = results_dir / "table2_overall.csv"
     if not csv_path.exists():
         print(f"[WARN] {csv_path} missing"); return
     df = pd.read_csv(csv_path)
@@ -74,12 +78,11 @@ def fig_overall_metrics(results_dir: str, fig_dir: str):
 
     fig, ax = plt.subplots(figsize=(11, 4.8))
     for i, row in df.iterrows():
-        is_adapt = "adaptive" in row["model"].lower()
-        color = "#d6604d" if is_adapt else "#4393c3"
-        bars = ax.bar(x + i * w - 0.4 + w / 2, [row[m] for m in metrics],
-                      w, label=row["model"], color=color,
-                      edgecolor="black", linewidth=0.4,
-                      hatch="//" if is_adapt else None)
+        color, hatch = _bar_color(row["model"])
+        bars = ax.bar(x + i * w - 0.4 + w / 2,
+                      [row[m] for m in metrics], w,
+                      label=row["model"], color=color,
+                      edgecolor="black", linewidth=0.4, hatch=hatch)
         for b, m in zip(bars, metrics):
             ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.005,
                     f"{row[m]:.2f}", ha="center", va="bottom", fontsize=8)
@@ -89,26 +92,24 @@ def fig_overall_metrics(results_dir: str, fig_dir: str):
     ax.set_title("Overall detection metrics — baseline vs adaptive loss")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(axis="y", linestyle=":", alpha=0.4)
-    out = Path(fig_dir) / "fig_overall_metrics.png"
+
+    out = fig_dir / "fig_overall_metrics.png"
     plt.tight_layout(); plt.savefig(out); plt.close()
     print(f"[INFO] saved {out}")
 
 
-def fig_training_curves(runs: list[str], labels: list[str],
-                        runs_dir: str, fig_dir: str):
+def fig_training_curves(runs, labels, runs_dir: Path, fig_dir: Path):
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     for run, label in zip(runs, labels):
-        csv_path = Path(runs_dir) / run / "results.csv"
+        csv_path = runs_dir / run / "results.csv"
         if not csv_path.exists():
             print(f"[WARN] {csv_path} missing"); continue
         df = pd.read_csv(csv_path)
         df.columns = [c.strip() for c in df.columns]
         ep = df["epoch"]
-        is_adapt = "adaptive" in label.lower()
-        ls = "--" if is_adapt else "-"
-        # box loss column may be "train/box_loss"
+        ls = "--" if "adaptive" in label.lower() else "-"
         box_col = next((c for c in df.columns if "box_loss" in c and "train" in c), None)
-        map_col = next((c for c in df.columns if "mAP50(B)" in c or "mAP50" == c), None)
+        map_col = next((c for c in df.columns if "mAP50(B)" in c or c == "mAP50"), None)
         if box_col:
             axes[0].plot(ep, df[box_col], ls, label=label)
         if map_col:
@@ -121,36 +122,33 @@ def fig_training_curves(runs: list[str], labels: list[str],
     axes[1].set_xlabel("Epoch"); axes[1].set_ylabel("mAP@0.5")
     axes[1].grid(linestyle=":", alpha=0.4); axes[1].legend(fontsize=9)
 
-    out = Path(fig_dir) / "fig_training_curves.png"
+    out = fig_dir / "fig_training_curves.png"
     plt.tight_layout(); plt.savefig(out); plt.close()
     print(f"[INFO] saved {out}")
 
 
-def copy_pr_curves(runs: list[str], runs_dir: str, fig_dir: str):
-    out_dir = Path(fig_dir) / "pr_curves"
+def copy_pr_curves(runs, runs_dir: Path, fig_dir: Path):
+    out_dir = fig_dir / "pr_curves"
     out_dir.mkdir(parents=True, exist_ok=True)
     for run in runs:
-        src = Path(runs_dir) / run / "PR_curve.png"
+        src = runs_dir / run / "PR_curve.png"
         if src.exists():
-            dst = out_dir / f"{run}_PR_curve.png"
-            shutil.copy(src, dst)
-            print(f"[INFO] copied {dst}")
+            shutil.copy(src, out_dir / f"{run}_PR_curve.png")
+            print(f"[INFO] copied {out_dir / f'{run}_PR_curve.png'}")
 
 
-def render_detections(runs: list[str], labels: list[str],
-                      runs_dir: str, fig_dir: str,
+def render_detections(runs, labels, runs_dir: Path, fig_dir: Path,
                       n_examples: int = 6, conf: float = 0.25):
-    """Render side-by-side detection comparisons on test images."""
-    test_imgs = sorted(glob.glob("data/test/images/*.jpg") +
-                       glob.glob("data/test/images/*.png"))[:n_examples]
+    test_imgs = sorted(glob.glob(str(DATA_DIR / "test" / "images" / "*.jpg")) +
+                       glob.glob(str(DATA_DIR / "test" / "images" / "*.png")))[:n_examples]
     if not test_imgs:
         print("[WARN] no test images"); return
 
-    out_root = Path(fig_dir) / "detections"
+    out_root = fig_dir / "detections"
     out_root.mkdir(parents=True, exist_ok=True)
 
     for run, label in zip(runs, labels):
-        weights = Path(runs_dir) / run / "weights" / "best.pt"
+        weights = runs_dir / run / "weights" / "best.pt"
         if not weights.exists():
             print(f"[WARN] missing {weights}"); continue
         model = YOLO(str(weights))
@@ -158,11 +156,10 @@ def render_detections(runs: list[str], labels: list[str],
         run_out.mkdir(exist_ok=True)
         for img_path in test_imgs:
             r = model.predict(img_path, conf=conf, verbose=False)[0]
-            annotated = r.plot()  # BGR numpy
-            cv2.imwrite(str(run_out / Path(img_path).name), annotated)
+            cv2.imwrite(str(run_out / Path(img_path).name), r.plot())
         print(f"[INFO] saved detections to {run_out}")
 
-    # composite panel: rows = images, cols = runs
+    # composite panel
     n_runs = len(runs)
     fig, axes = plt.subplots(n_examples, n_runs,
                               figsize=(3.6 * n_runs, 3.6 * n_examples))
@@ -176,34 +173,31 @@ def render_detections(runs: list[str], labels: list[str],
             if not p.exists():
                 continue
             img = cv2.cvtColor(cv2.imread(str(p)), cv2.COLOR_BGR2RGB)
-            ax = axes[i, j]
-            ax.imshow(img); ax.axis("off")
+            axes[i, j].imshow(img); axes[i, j].axis("off")
             if i == 0:
-                ax.set_title(label, fontsize=10)
+                axes[i, j].set_title(label, fontsize=10)
 
-    out = Path(fig_dir) / "fig_detections_panel.png"
+    out = fig_dir / "fig_detections_panel.png"
     plt.tight_layout(); plt.savefig(out); plt.close()
     print(f"[INFO] saved {out}")
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--runs",   nargs="+", required=True)
-    p.add_argument("--labels", nargs="+", default=None)
-    p.add_argument("--runs-dir",    default="runs")
-    p.add_argument("--results-dir", default="results")
-    p.add_argument("--fig-dir",     default="figures")
-    p.add_argument("--n-examples",  type=int, default=6)
+    p.add_argument("--runs",   nargs="+", default=[r["name"] for r in RUNS])
+    p.add_argument("--labels", nargs="+", default=LABELS)
+    p.add_argument("--n-examples", type=int, default=6)
     args = p.parse_args()
 
-    labels = args.labels or args.runs
-    Path(args.fig_dir).mkdir(parents=True, exist_ok=True)
+    runs_dir    = get_runs_dir()
+    results_dir = get_results_dir()
+    fig_dir     = get_figures_dir()
 
-    fig_recall_by_size(args.results_dir, args.fig_dir)
-    fig_overall_metrics(args.results_dir, args.fig_dir)
-    fig_training_curves(args.runs, labels, args.runs_dir, args.fig_dir)
-    copy_pr_curves(args.runs, args.runs_dir, args.fig_dir)
-    render_detections(args.runs, labels, args.runs_dir, args.fig_dir,
+    fig_recall_by_size(results_dir, fig_dir)
+    fig_overall_metrics(results_dir, fig_dir)
+    fig_training_curves(args.runs, args.labels, runs_dir, fig_dir)
+    copy_pr_curves(args.runs, runs_dir, fig_dir)
+    render_detections(args.runs, args.labels, runs_dir, fig_dir,
                       n_examples=args.n_examples)
 
 

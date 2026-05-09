@@ -1,34 +1,30 @@
 """Aggregate metrics from completed runs into article tables.
 
 Reads:
-    runs/<run_name>_val/<csv files>            -- ultralytics val output
-    results/<run_name>.json                    -- evaluate_size.py output
+    runs/<run_name>/weights/best.pt          -- model weights
+    results/<run_name>.json                  -- evaluate_size.py output
 
 Writes:
-    results/table2_overall.csv                 -- P, R, F1, mAP@0.5
-    results/table3_recall_by_size.csv          -- Recall per size group
-    results/localization_quality.csv           -- centre err per size group
+    results/table2_overall.csv               -- P, R, F1, mAP@0.5, mAP@0.5:0.95
+    results/table3_recall_by_size.csv        -- Recall per size group
+    results/localization_quality.csv         -- centre err per size group
 
-Run example:
-    python compare_runs.py \\
-        --runs yolov8s_baseline yolov8s_adaptive yolo11s_baseline yolo11s_adaptive \\
-        --labels "YOLOv8s baseline" "YOLOv8s + adaptive loss" \\
-                  "YOLOv11s baseline" "YOLOv11s + adaptive loss"
+Usage:
+    python compare_runs.py
 """
 
 import argparse
 import csv
 import json
-import os
 from pathlib import Path
 
-import yaml
 from ultralytics import YOLO
 
+from config import DATASET_YAML, LABELS, RUNS, get_results_dir, get_runs_dir
 
-def get_overall_metrics(weights: str, data_yaml: str = "data/data.yaml") -> dict:
-    model = YOLO(weights)
-    m = model.val(data=data_yaml, verbose=False, plots=False)
+
+def get_overall_metrics(weights: str) -> dict:
+    m = YOLO(weights).val(data=str(DATASET_YAML), verbose=False, plots=False)
     p, r = float(m.box.mp), float(m.box.mr)
     f1 = 2 * p * r / (p + r) if (p + r) else 0.0
     return {
@@ -42,42 +38,34 @@ def get_overall_metrics(weights: str, data_yaml: str = "data/data.yaml") -> dict
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--runs",   nargs="+", required=True,
-                   help="run names (folder names under runs/)")
-    p.add_argument("--labels", nargs="+", default=None,
-                   help="display labels (same order as --runs)")
-    p.add_argument("--results-dir", default="results")
-    p.add_argument("--runs-dir",    default="runs")
+    p.add_argument("--runs",   nargs="+", default=[r["name"] for r in RUNS])
+    p.add_argument("--labels", nargs="+", default=LABELS)
     args = p.parse_args()
 
-    labels = args.labels or args.runs
-    assert len(labels) == len(args.runs), "labels count must match runs count"
+    runs_dir    = get_runs_dir()
+    results_dir = get_results_dir()
 
-    os.makedirs(args.results_dir, exist_ok=True)
-
-    # ---- Table 2: overall metrics ----
+    # ── Table 2: overall metrics ─────────────────────────────────────────────
     t2 = []
-    for run, label in zip(args.runs, labels):
-        weights = Path(args.runs_dir) / run / "weights" / "best.pt"
+    for run, label in zip(args.runs, args.labels):
+        weights = runs_dir / run / "weights" / "best.pt"
         if not weights.exists():
             print(f"[WARN] missing {weights}, skip")
             continue
         print(f"[INFO] {label}: validating {weights}")
-        metrics = get_overall_metrics(str(weights))
-        t2.append({"model": label, **metrics})
+        t2.append({"model": label, **get_overall_metrics(str(weights))})
 
-    t2_path = Path(args.results_dir) / "table2_overall.csv"
-    with open(t2_path, "w", newline="") as f:
-        if t2:
+    t2_path = results_dir / "table2_overall.csv"
+    if t2:
+        with open(t2_path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(t2[0].keys()))
             w.writeheader(); w.writerows(t2)
     print(f"[INFO] saved {t2_path}")
 
-    # ---- Table 3: recall by size + localization quality ----
-    t3 = []
-    loc = []
-    for run, label in zip(args.runs, labels):
-        size_json = Path(args.results_dir) / f"{run}.json"
+    # ── Table 3 + localization quality ───────────────────────────────────────
+    t3, loc = [], []
+    for run, label in zip(args.runs, args.labels):
+        size_json = results_dir / f"{run}.json"
         if not size_json.exists():
             print(f"[WARN] missing {size_json} (run evaluate_size.py first), skip")
             continue
@@ -97,21 +85,21 @@ def main():
             "medium":     data["medium"]["centre_err_mean"],
         })
 
-    t3_path = Path(args.results_dir) / "table3_recall_by_size.csv"
-    with open(t3_path, "w", newline="") as f:
-        if t3:
+    t3_path = results_dir / "table3_recall_by_size.csv"
+    if t3:
+        with open(t3_path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(t3[0].keys()))
             w.writeheader(); w.writerows(t3)
     print(f"[INFO] saved {t3_path}")
 
-    loc_path = Path(args.results_dir) / "localization_quality.csv"
-    with open(loc_path, "w", newline="") as f:
-        if loc:
+    loc_path = results_dir / "localization_quality.csv"
+    if loc:
+        with open(loc_path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(loc[0].keys()))
             w.writeheader(); w.writerows(loc)
     print(f"[INFO] saved {loc_path}")
 
-    # ---- print summary ----
+    # ── console summary ──────────────────────────────────────────────────────
     if t2:
         print("\n=== Table 2: Overall comparison ===")
         print(f"{'model':<32} {'P':>6} {'R':>6} {'F1':>6} {'mAP@.5':>7} {'mAP@.5:.95':>11}")

@@ -44,12 +44,20 @@ class AdaptiveAssigner(TaskAlignedAssigner):
             super().forward(pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt)
         )
 
-        # target_bboxes here are in pixel coordinates at imgsz scale (xyxy)
-        bw = (target_bboxes[..., 2] - target_bboxes[..., 0]).clamp(min=0)
-        bh = (target_bboxes[..., 3] - target_bboxes[..., 1]).clamp(min=0)
+        # Compute per-anchor area weights in fp32 to avoid AMP half-precision
+        # overflow when areas are small (A0 / area can spike before clamp).
+        tb = target_bboxes.float()
+        bw = (tb[..., 2] - tb[..., 0]).clamp(min=0)
+        bh = (tb[..., 3] - tb[..., 1]).clamp(min=0)
         area = (bw * bh).clamp(min=1.0)
         w = torch.clamp(self.A0 / area, max=self.W_MAX)
-        w = torch.where(fg_mask, w, torch.ones_like(w))
+
+        # fg_mask may arrive as Half under AMP — torch.where requires bool.
+        fg_bool = fg_mask.bool()
+        w = torch.where(fg_bool, w, torch.ones_like(w))
+
+        # Cast back to original dtype before scaling target_scores
+        w = w.to(target_scores.dtype)
         target_scores = target_scores * w.unsqueeze(-1)
 
         return target_labels, target_bboxes, target_scores, fg_mask, target_gt_idx

@@ -20,11 +20,11 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
-from config import DATASET_YAML, LABELS, RUNS, get_results_dir, get_runs_dir
+from config import LABELS, RUNS, get_results_dir, get_runs_dir
 
 
-def get_overall_metrics(weights: str) -> dict:
-    m = YOLO(weights).val(data=str(DATASET_YAML), verbose=False, plots=False)
+def get_overall_metrics(weights: str, dataset_yaml: str) -> dict:
+    m = YOLO(weights).val(data=dataset_yaml, verbose=False, plots=False)
     p, r = float(m.box.mp), float(m.box.mr)
     f1 = 2 * p * r / (p + r) if (p + r) else 0.0
     return {
@@ -38,22 +38,37 @@ def get_overall_metrics(weights: str) -> dict:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--runs",   nargs="+", default=[r["name"] for r in RUNS])
-    p.add_argument("--labels", nargs="+", default=LABELS)
+    p.add_argument("--runs",   nargs="+", default=None,
+                   help="run names (default: all from config.RUNS)")
+    p.add_argument("--labels", nargs="+", default=None)
     args = p.parse_args()
 
     runs_dir    = get_runs_dir()
     results_dir = get_results_dir()
 
-    # ── Table 2: overall metrics ─────────────────────────────────────────────
+    # Build (run_name, label, dataset_yaml) triples
+    if args.runs:
+        # Manual override — match labels if provided, else use run names
+        labels = args.labels or args.runs
+        # Try to find dataset_yaml from config RUNS, fall back to v11
+        cfg_map = {c["name"]: c for c in RUNS}
+        run_cfgs = []
+        for rn, lb in zip(args.runs, labels):
+            yaml = str(cfg_map[rn]["dataset_yaml"]) if rn in cfg_map else str(RUNS[-1]["dataset_yaml"])
+            run_cfgs.append((rn, lb, yaml))
+    else:
+        run_cfgs = [(c["name"], lb, str(c["dataset_yaml"]))
+                    for c, lb in zip(RUNS, LABELS)]
+
+    # ── Table 2: overall metrics ──────────────────────────────────────────────
     t2 = []
-    for run, label in zip(args.runs, args.labels):
-        weights = runs_dir / run / "weights" / "best.pt"
+    for run_name, label, dataset_yaml in run_cfgs:
+        weights = runs_dir / run_name / "weights" / "best.pt"
         if not weights.exists():
             print(f"[WARN] missing {weights}, skip")
             continue
-        print(f"[INFO] {label}: validating {weights}")
-        t2.append({"model": label, **get_overall_metrics(str(weights))})
+        print(f"[INFO] {label}: validating {weights}  (data={dataset_yaml})")
+        t2.append({"model": label, **get_overall_metrics(str(weights), dataset_yaml)})
 
     t2_path = results_dir / "table2_overall.csv"
     if t2:
@@ -62,10 +77,10 @@ def main():
             w.writeheader(); w.writerows(t2)
     print(f"[INFO] saved {t2_path}")
 
-    # ── Table 3 + localization quality ───────────────────────────────────────
+    # ── Table 3 + localization quality ────────────────────────────────────────
     t3, loc = [], []
-    for run, label in zip(args.runs, args.labels):
-        size_json = results_dir / f"{run}.json"
+    for run_name, label, _ in run_cfgs:
+        size_json = results_dir / f"{run_name}.json"
         if not size_json.exists():
             print(f"[WARN] missing {size_json} (run evaluate_size.py first), skip")
             continue
@@ -99,7 +114,7 @@ def main():
             w.writeheader(); w.writerows(loc)
     print(f"[INFO] saved {loc_path}")
 
-    # ── console summary ──────────────────────────────────────────────────────
+    # ── console summary ───────────────────────────────────────────────────────
     if t2:
         print("\n=== Table 2: Overall comparison ===")
         print(f"{'model':<32} {'P':>6} {'R':>6} {'F1':>6} {'mAP@.5':>7} {'mAP@.5:.95':>11}")

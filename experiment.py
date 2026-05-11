@@ -60,7 +60,9 @@ def main():
     print("=" * 60)
     run([py, "dataset_stats.py"])
 
-    # ── 3. Per-size evaluation ───────────────────────────────────────────────
+    # ── 3. Per-size evaluation ────────────────────────────────────────────────
+    # Each run is evaluated on its own dataset (v8 dataset for YOLOv8 models,
+    # v11 dataset for YOLOv11 models).
     print("\n" + "=" * 60)
     print("STEP 3 / 4 — Per-size Recall evaluation")
     print("=" * 60)
@@ -75,7 +77,7 @@ def main():
             "--out",     str(results_dir / f"{cfg['name']}.json"),
         ])
 
-    # ── 4. Tables and figures ────────────────────────────────────────────────
+    # ── 4. Tables and figures ─────────────────────────────────────────────────
     print("\n" + "=" * 60)
     print("STEP 4 / 4 — Tables and figures")
     print("=" * 60)

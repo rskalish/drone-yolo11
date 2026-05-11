@@ -8,15 +8,28 @@ IS_COLAB = "COLAB_GPU" in os.environ or os.path.isdir("/content")
 IS_LOCAL = not IS_COLAB
 
 # ── Defaults that differ between Colab and local ─────────────────────────────
-DEFAULT_EPOCHS  = 80 if IS_COLAB else 10
-DEFAULT_BATCH   = 16 if IS_COLAB else 8
+DEFAULT_EPOCHS   = 80 if IS_COLAB else 10
+DEFAULT_BATCH    = 16 if IS_COLAB else 8
 DEFAULT_PATIENCE = 20 if IS_COLAB else 10
 
-# ── Paths ────────────────────────────────────────────────────────────────────
-DATA_DIR     = Path("data")
-DATASET_YAML = DATA_DIR / "data.yaml"
-DRIVE_ROOT   = Path("/content/drive/MyDrive/drone_yolo11")
-LOCAL_RUNS   = Path("runs")
+# ── Dataset paths (separate datasets per YOLO family) ────────────────────────
+DATA_DIR_V8  = Path("data_v8")   # YOLOv8 format dataset
+DATA_DIR_V11 = Path("data_v11")  # YOLOv11 format dataset
+
+DATASET_YAML_V8  = DATA_DIR_V8  / "data.yaml"
+DATASET_YAML_V11 = DATA_DIR_V11 / "data.yaml"
+
+# Legacy alias (used by dataset_stats, evaluate_size when called standalone)
+DATA_DIR     = DATA_DIR_V11
+DATASET_YAML = DATASET_YAML_V11
+
+# ── Roboflow dataset URLs ─────────────────────────────────────────────────────
+DATASET_URL_V8  = "https://app.roboflow.com/ds/RUtAN730lu?key=rn5noQXlBB"
+DATASET_URL_V11 = "https://app.roboflow.com/ds/fprdklA54R?key=OI4DskY6Kp"
+
+# ── Drive / local paths ───────────────────────────────────────────────────────
+DRIVE_ROOT = Path("/content/drive/MyDrive/drone_yolo11")
+LOCAL_RUNS = Path("runs")
 
 
 def get_runs_dir() -> Path:
@@ -49,12 +62,14 @@ def get_figures_dir() -> Path:
     return d
 
 
-# ── Experiment definitions ───────────────────────────────────────────────────
+# ── Experiment definitions ────────────────────────────────────────────────────
+# Each run specifies which dataset YAML to use so models are always evaluated
+# on their own dataset format.
 RUNS = [
-    {"model": "yolov8s.pt", "name": "yolov8s_baseline", "adaptive": False},
-    {"model": "yolov8s.pt", "name": "yolov8s_adaptive", "adaptive": True},
-    {"model": "yolo11s.pt", "name": "yolo11s_baseline", "adaptive": False},
-    {"model": "yolo11s.pt", "name": "yolo11s_adaptive", "adaptive": True},
+    {"model": "yolov8s.pt",  "name": "yolov8s_baseline", "adaptive": False, "dataset_yaml": DATASET_YAML_V8},
+    {"model": "yolov8s.pt",  "name": "yolov8s_adaptive",  "adaptive": True,  "dataset_yaml": DATASET_YAML_V8},
+    {"model": "yolo11s.pt",  "name": "yolo11s_baseline", "adaptive": False, "dataset_yaml": DATASET_YAML_V11},
+    {"model": "yolo11s.pt",  "name": "yolo11s_adaptive",  "adaptive": True,  "dataset_yaml": DATASET_YAML_V11},
 ]
 
 LABELS = [
@@ -64,11 +79,11 @@ LABELS = [
     "YOLOv11s + adaptive loss",
 ]
 
-# ── Adaptive loss hyperparameters ────────────────────────────────────────────
+# ── Adaptive loss hyperparameters ─────────────────────────────────────────────
 A0    = 32.0 * 32.0  # reference small-object area in pixels
 W_MAX = 4.0          # max sample weight cap
 
-# ── Size-group thresholds (pixels^2) ─────────────────────────────────────────
+# ── Size-group thresholds (pixels²) ──────────────────────────────────────────
 SIZE_GROUPS = [
     ("very_small", 0,         16 * 16),
     ("small",      16 * 16,   32 * 32),

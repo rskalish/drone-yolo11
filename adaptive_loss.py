@@ -28,6 +28,9 @@ import torch
 from ultralytics.utils.loss import v8DetectionLoss
 from ultralytics.utils.tal import TaskAlignedAssigner
 
+# Store original init_criterion so we can restore it
+_original_init_criterion = None
+
 
 class AdaptiveAssigner(TaskAlignedAssigner):
     """TaskAlignedAssigner that scales target_scores by min(A0/A_i, w_max)."""
@@ -77,14 +80,35 @@ def enable_adaptive_loss(a0: float = 32 * 32, w_max: float = 4.0):
     """Monkey-patch DetectionModel.init_criterion to use AdaptiveDetectionLoss.
 
     Must be called BEFORE the YOLO model is loaded for training.
+    Call disable_adaptive_loss() to restore original behavior.
     """
+    global _original_init_criterion
     from ultralytics.nn.tasks import DetectionModel
 
     AdaptiveDetectionLoss.A0 = float(a0)
     AdaptiveDetectionLoss.W_MAX = float(w_max)
 
+    # Save original only once (so repeated enable calls don't overwrite it)
+    if _original_init_criterion is None:
+        _original_init_criterion = DetectionModel.init_criterion
+
     def _init_criterion(self):
         return AdaptiveDetectionLoss(self)
 
     DetectionModel.init_criterion = _init_criterion
-    print(f"[adaptive_loss] enabled: A0={a0:.0f}, w_max={w_max}")
+    print(f"[adaptive_loss] ENABLED: A0={a0:.0f} px², w_max={w_max}")
+
+
+def disable_adaptive_loss():
+    """Restore the original DetectionModel.init_criterion (standard loss).
+
+    Must be called before training a baseline model when adaptive was previously
+    enabled in the same Python process (e.g., in --all sequential training).
+    """
+    global _original_init_criterion
+    if _original_init_criterion is None:
+        return  # was never patched, nothing to do
+
+    from ultralytics.nn.tasks import DetectionModel
+    DetectionModel.init_criterion = _original_init_criterion
+    print("[adaptive_loss] DISABLED: restored standard loss")

@@ -14,7 +14,8 @@ import argparse
 import os
 
 from config import (
-    DATASET_YAML,
+    DATASET_YAML_V8,
+    DATASET_YAML_V11,
     DEFAULT_BATCH,
     DEFAULT_EPOCHS,
     DEFAULT_PATIENCE,
@@ -24,7 +25,7 @@ from config import (
     env_summary,
     get_runs_dir,
 )
-from download_dataset import download
+from download_dataset import download_all
 from utils import get_device
 
 
@@ -42,13 +43,27 @@ def parse_args():
     p.add_argument("--a0",       type=float, default=A0)
     p.add_argument("--w-max",    type=float, default=W_MAX)
     p.add_argument("--seed",     type=int,   default=42)
+    # dataset override for single-run mode
+    p.add_argument("--data",     default=None, help="path to data.yaml (auto if omitted)")
     return p.parse_args()
 
 
-def train_one(model_name: str, run_name: str, adaptive: bool, args, device, project):
+def train_one(model_name: str, run_name: str, adaptive: bool,
+              dataset_yaml: str, args, device, project):
+    """Train one configuration.
+
+    IMPORTANT: enable/disable adaptive loss BEFORE importing YOLO so the
+    monkey-patch is in place when DetectionModel.init_criterion is first called.
+    adaptive=True  → enable_adaptive_loss()  (patches DetectionModel)
+    adaptive=False → disable_adaptive_loss() (restores original criterion)
+    This ensures sequential runs in --all mode don't bleed patches across models.
+    """
+    from adaptive_loss import disable_adaptive_loss, enable_adaptive_loss
+
     if adaptive:
-        from adaptive_loss import enable_adaptive_loss
         enable_adaptive_loss(a0=args.a0, w_max=args.w_max)
+    else:
+        disable_adaptive_loss()
 
     from ultralytics import YOLO
 
@@ -60,7 +75,7 @@ def train_one(model_name: str, run_name: str, adaptive: bool, args, device, proj
         model.train(resume=True, device=device)
     else:
         model.train(
-            data=str(DATASET_YAML),
+            data=dataset_yaml,
             epochs=args.epochs,
             imgsz=args.imgsz,
             batch=args.batch,
@@ -90,13 +105,14 @@ def train_one(model_name: str, run_name: str, adaptive: bool, args, device, proj
 
     from ultralytics import YOLO as _YOLO
     metrics = _YOLO(str(best_path)).val(
-        data=str(DATASET_YAML),
+        data=dataset_yaml,
         project=str(project),
         name=f"{run_name}_val",
         exist_ok=True,
     )
     print(f"\n{'=' * 40}")
     print(f"Run:       {run_name}")
+    print(f"Adaptive:  {adaptive}")
     print(f"Precision: {metrics.box.mp:.4f}")
     print(f"Recall:    {metrics.box.mr:.4f}")
     print(f"mAP50:     {metrics.box.map50:.4f}")
@@ -107,8 +123,8 @@ def train_one(model_name: str, run_name: str, adaptive: bool, args, device, proj
 def main():
     args = parse_args()
     print(env_summary())
-    download()
-    device = get_device()
+    download_all()
+    device  = get_device()
     project = args.project or get_runs_dir()
 
     if args.all:
@@ -120,14 +136,26 @@ def main():
                 continue
             last_pt = project / cfg["name"] / "weights" / "last.pt"
             model_arg = str(last_pt) if last_pt.exists() else cfg["model"]
-            print(f"\n>>> {cfg['name']} (adaptive={cfg['adaptive']}, model={model_arg})\n")
-            train_one(model_arg, cfg["name"], cfg["adaptive"], args, device, project)
+            dataset_yaml = str(cfg["dataset_yaml"])
+            print(f"\n>>> {cfg['name']}  adaptive={cfg['adaptive']}  "
+                  f"model={model_arg}  data={dataset_yaml}\n")
+            train_one(model_arg, cfg["name"], cfg["adaptive"],
+                      dataset_yaml, args, device, project)
     else:
+        # Single-run mode: infer dataset from model name if not given
+        if args.data:
+            dataset_yaml = args.data
+        elif "v8" in args.model or "yolov8" in args.model.lower():
+            dataset_yaml = str(DATASET_YAML_V8)
+        else:
+            dataset_yaml = str(DATASET_YAML_V11)
+
         name = args.name
         if name is None:
             stem = os.path.splitext(os.path.basename(args.model))[0]
             name = f"{stem}_{'adaptive' if args.adaptive else 'baseline'}"
-        train_one(args.model, name, args.adaptive, args, device, project)
+        train_one(args.model, name, args.adaptive,
+                  dataset_yaml, args, device, project)
 
 
 if __name__ == "__main__":

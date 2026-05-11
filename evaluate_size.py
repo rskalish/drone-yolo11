@@ -18,13 +18,24 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from config import DATA_DIR, SIZE_GROUPS, get_results_dir
+from config import DATA_DIR_V8, DATA_DIR_V11, SIZE_GROUPS, get_results_dir
 from utils import group_for_area, iou_xyxy, yolo_label_to_xyxy
 
 
-def evaluate(weights: str, split: str, imgsz: int, conf: float, iou_thr: float):
-    images_dir = DATA_DIR / split / "images"
-    labels_dir = DATA_DIR / split / "labels"
+def _data_dir_for_weights(weights: str):
+    """Pick the dataset directory that matches the run name in weights path."""
+    w = weights.lower()
+    if "yolov8" in w or "v8" in w:
+        return DATA_DIR_V8
+    return DATA_DIR_V11
+
+
+def evaluate(weights: str, split: str, imgsz: int, conf: float, iou_thr: float,
+             data_dir=None):
+    if data_dir is None:
+        data_dir = _data_dir_for_weights(weights)
+    images_dir = data_dir / split / "images"
+    labels_dir = data_dir / split / "labels"
     image_paths = sorted(glob.glob(str(images_dir / "*.jpg")) +
                          glob.glob(str(images_dir / "*.png")))
     print(f"[INFO] {len(image_paths)} images in {split}")
@@ -133,7 +144,8 @@ def main():
     p.add_argument("--out",     default=None)
     args = p.parse_args()
 
-    out = evaluate(args.weights, args.split, args.imgsz, args.conf, args.iou_thr)
+    out = evaluate(args.weights, args.split, args.imgsz, args.conf, args.iou_thr,
+                   data_dir=None)
     print(json.dumps(out, indent=2))
 
     if args.out:

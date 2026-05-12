@@ -29,8 +29,12 @@ plt.rcParams.update({
 
 
 def _bar_color(model_name: str) -> tuple:
-    is_adapt = "adaptive" in model_name.lower()
-    return ("#d6604d" if is_adapt else "#4393c3", "//" if is_adapt else None)
+    name = model_name.lower()
+    if "w_max=2" in name or "w2" in name:
+        return "#f4a261", "\\\\"   # orange + backslash hatch
+    if "adaptive" in name:
+        return "#d6604d", "//"     # red + hatch
+    return "#4393c3", None         # blue + no hatch
 
 
 def fig_recall_by_size(results_dir: Path, fig_dir: Path):

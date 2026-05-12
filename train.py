@@ -49,7 +49,7 @@ def parse_args():
 
 
 def train_one(model_name: str, run_name: str, adaptive: bool,
-              dataset_yaml: str, args, device, project):
+              dataset_yaml: str, args, device, project, w_max: float = None):
     """Train one configuration.
 
     IMPORTANT: enable/disable adaptive loss BEFORE importing YOLO so the
@@ -60,8 +60,9 @@ def train_one(model_name: str, run_name: str, adaptive: bool,
     """
     from adaptive_loss import disable_adaptive_loss, enable_adaptive_loss
 
+    effective_w_max = w_max if w_max is not None else args.w_max
     if adaptive:
-        enable_adaptive_loss(a0=args.a0, w_max=args.w_max)
+        enable_adaptive_loss(a0=args.a0, w_max=effective_w_max)
     else:
         disable_adaptive_loss()
 
@@ -137,10 +138,11 @@ def main():
             last_pt = project / cfg["name"] / "weights" / "last.pt"
             model_arg = str(last_pt) if last_pt.exists() else cfg["model"]
             dataset_yaml = str(cfg["dataset_yaml"])
+            w_max = cfg.get("w_max", args.w_max)
             print(f"\n>>> {cfg['name']}  adaptive={cfg['adaptive']}  "
-                  f"model={model_arg}  data={dataset_yaml}\n")
+                  f"w_max={w_max}  model={model_arg}  data={dataset_yaml}\n")
             train_one(model_arg, cfg["name"], cfg["adaptive"],
-                      dataset_yaml, args, device, project)
+                      dataset_yaml, args, device, project, w_max=w_max)
     else:
         # Single-run mode: infer dataset from model name if not given
         if args.data:

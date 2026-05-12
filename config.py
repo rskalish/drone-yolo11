@@ -65,23 +65,30 @@ def get_figures_dir() -> Path:
 # ── Experiment definitions ────────────────────────────────────────────────────
 # Each run specifies which dataset YAML to use so models are always evaluated
 # on their own dataset format.
+# w_max controls the aggressiveness of the adaptive loss:
+#   w_max=4 → small objects get 4× gradient boost (large get 4× less)
+#   w_max=2 → gentler variant: small get 2× boost, large get 2× less
 RUNS = [
-    {"model": "yolov8s.pt",  "name": "yolov8s_baseline", "adaptive": False, "dataset_yaml": DATASET_YAML_V8},
-    {"model": "yolov8s.pt",  "name": "yolov8s_adaptive",  "adaptive": True,  "dataset_yaml": DATASET_YAML_V8},
-    {"model": "yolo11s.pt",  "name": "yolo11s_baseline", "adaptive": False, "dataset_yaml": DATASET_YAML_V11},
-    {"model": "yolo11s.pt",  "name": "yolo11s_adaptive",  "adaptive": True,  "dataset_yaml": DATASET_YAML_V11},
+    {"model": "yolov8s.pt", "name": "yolov8s_baseline",    "adaptive": False, "w_max": 4.0, "dataset_yaml": DATASET_YAML_V8},
+    {"model": "yolov8s.pt", "name": "yolov8s_adaptive_w4", "adaptive": True,  "w_max": 4.0, "dataset_yaml": DATASET_YAML_V8},
+    {"model": "yolov8s.pt", "name": "yolov8s_adaptive_w2", "adaptive": True,  "w_max": 2.0, "dataset_yaml": DATASET_YAML_V8},
+    {"model": "yolo11s.pt", "name": "yolo11s_baseline",    "adaptive": False, "w_max": 4.0, "dataset_yaml": DATASET_YAML_V11},
+    {"model": "yolo11s.pt", "name": "yolo11s_adaptive_w4", "adaptive": True,  "w_max": 4.0, "dataset_yaml": DATASET_YAML_V11},
+    {"model": "yolo11s.pt", "name": "yolo11s_adaptive_w2", "adaptive": True,  "w_max": 2.0, "dataset_yaml": DATASET_YAML_V11},
 ]
 
 LABELS = [
     "YOLOv8s baseline",
-    "YOLOv8s + adaptive loss",
+    "YOLOv8s + adaptive (w_max=4)",
+    "YOLOv8s + adaptive (w_max=2)",
     "YOLOv11s baseline",
-    "YOLOv11s + adaptive loss",
+    "YOLOv11s + adaptive (w_max=4)",
+    "YOLOv11s + adaptive (w_max=2)",
 ]
 
 # ── Adaptive loss hyperparameters ─────────────────────────────────────────────
 A0    = 32.0 * 32.0  # reference small-object area in pixels
-W_MAX = 4.0          # max sample weight cap
+W_MAX = 4.0          # default max weight cap (overridden per-run via RUNS)
 
 # ── Size-group thresholds (pixels²) ──────────────────────────────────────────
 SIZE_GROUPS = [

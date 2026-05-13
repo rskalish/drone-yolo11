@@ -98,7 +98,7 @@ def train_one(model_name: str, run_name: str, adaptive: bool,
             device=device,
             plots=True,
             save=True,
-            save_period=10,
+            save_period=-1,   # only best.pt + last.pt, no per-epoch checkpoints
         )
 
     best_path = project / run_name / "weights" / "best.pt"

@@ -52,10 +52,18 @@ _original_init_criterion = None
 
 
 class AdaptiveAssigner(TaskAlignedAssigner):
-    """TaskAlignedAssigner that boosts target_scores for small-object anchors."""
+    """TaskAlignedAssigner that boosts target_scores for small-object anchors.
 
-    A0    = 32.0 * 32.0
-    W_MAX = 4.0
+    A `boost_strength` ∈ [0, 1] controls how strongly small-object targets
+    are pulled toward 1.0. With strength=0.3 (default), a very-small anchor's
+    target_score is pulled 30% of the way to 1.0 — strong enough to improve
+    small-object recall, gentle enough to avoid over-confidence (which would
+    inflate false positives and drop Precision).
+    """
+
+    A0              = 32.0 * 32.0
+    W_MAX           = 4.0
+    BOOST_STRENGTH  = 0.3      # how aggressively to pull target_scores toward 1.0
 
     @torch.no_grad()
     def forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, mask_gt):
@@ -72,7 +80,7 @@ class AdaptiveAssigner(TaskAlignedAssigner):
 
         # Boost factor: 0 for large (w=1), 1 for very small (w=W_MAX)
         denom = max(self.W_MAX - 1.0, 1e-6)
-        boost = ((w - 1.0) / denom).clamp(0.0, 1.0)
+        boost = ((w - 1.0) / denom).clamp(0.0, 1.0) * self.BOOST_STRENGTH
 
         # Apply only to foreground anchors; background → boost=0 (no change)
         fg_bool = fg_mask.bool()

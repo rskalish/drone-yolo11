@@ -137,12 +137,68 @@ def copy_pr_curves(runs, runs_dir: Path, fig_dir: Path):
             print(f"[INFO] copied {out_dir / f'{run}_PR_curve.png'}")
 
 
+def _pick_drone_examples(n: int = 6):
+    """Pick test images that ACTUALLY contain drone annotations.
+
+    The test set includes background images (rooms, planes, birds) used as
+    hard negatives during training — those should not appear in the article
+    detection panel. We filter by non-empty label files, then bucket by box
+    size and sample evenly across size groups so the panel covers the full
+    scale spectrum (very_small / small / medium / large).
+    """
+    img_dir = DATA_DIR / "test" / "images"
+    lbl_dir = DATA_DIR / "test" / "labels"
+    imgs = sorted(glob.glob(str(img_dir / "*.jpg")) +
+                  glob.glob(str(img_dir / "*.png")))
+
+    buckets = {"very_small": [], "small": [], "medium": [], "large": []}
+    for img_path in imgs:
+        lbl = lbl_dir / (Path(img_path).stem + ".txt")
+        if not lbl.exists():
+            continue
+        with open(lbl) as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        if not lines:
+            continue                      # background image — skip
+        # Use the largest box in the image to pick a representative bucket
+        max_area = 0.0
+        for ln in lines:
+            parts = ln.split()
+            if len(parts) < 5:
+                continue
+            _, _, _, w, h = parts[:5]      # YOLO normalized format
+            max_area = max(max_area, float(w) * float(h))
+        # buckets by area fraction of the 640×640 input
+        if max_area < (16 * 16) / (640 * 640):
+            buckets["very_small"].append(img_path)
+        elif max_area < (32 * 32) / (640 * 640):
+            buckets["small"].append(img_path)
+        elif max_area < (64 * 64) / (640 * 640):
+            buckets["medium"].append(img_path)
+        else:
+            buckets["large"].append(img_path)
+
+    # Sample evenly: take 1-2 from each bucket up to n total
+    per = max(1, n // 4)
+    picked = []
+    for group in ("very_small", "small", "medium", "large"):
+        picked.extend(buckets[group][:per])
+    # If we still need more, top up from buckets that have leftovers
+    if len(picked) < n:
+        for group in ("small", "medium", "very_small", "large"):
+            for img in buckets[group][per:]:
+                if len(picked) >= n:
+                    break
+                picked.append(img)
+    return picked[:n]
+
+
 def render_detections(runs, labels, runs_dir: Path, fig_dir: Path,
                       n_examples: int = 6, conf: float = 0.25):
-    test_imgs = sorted(glob.glob(str(DATA_DIR / "test" / "images" / "*.jpg")) +
-                       glob.glob(str(DATA_DIR / "test" / "images" / "*.png")))[:n_examples]
+    test_imgs = _pick_drone_examples(n_examples)
     if not test_imgs:
-        print("[WARN] no test images"); return
+        print("[WARN] no test images with drone annotations"); return
+    print(f"[INFO] picked {len(test_imgs)} drone examples across size groups")
 
     out_root = fig_dir / "detections"
     out_root.mkdir(parents=True, exist_ok=True)

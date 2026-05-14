@@ -195,35 +195,51 @@ def _pick_drone_examples(n: int = 6):
 
 def render_detections(runs, labels, runs_dir: Path, fig_dir: Path,
                       n_examples: int = 6, conf: float = 0.25):
-    test_imgs = _pick_drone_examples(n_examples)
-    if not test_imgs:
+    # Pick more candidates than needed so we can drop ones nobody detected
+    candidates = _pick_drone_examples(n_examples * 3)
+    if not candidates:
         print("[WARN] no test images with drone annotations"); return
-    print(f"[INFO] picked {len(test_imgs)} drone examples across size groups")
+    print(f"[INFO] starting with {len(candidates)} candidate drone images")
 
     out_root = fig_dir / "detections"
     out_root.mkdir(parents=True, exist_ok=True)
 
+    # Run inference for every candidate and remember which images each
+    # model actually produced a detection on. We'll then keep only images
+    # where at least one of the four models drew a box.
+    models = {}
+    detected = {img: 0 for img in candidates}
     for run, label in zip(runs, labels):
         weights = runs_dir / run / "weights" / "best.pt"
         if not weights.exists():
             print(f"[WARN] missing {weights}"); continue
         model = YOLO(str(weights))
+        models[run] = model
         run_out = out_root / run
         run_out.mkdir(exist_ok=True)
-        for img_path in test_imgs:
+        for img_path in candidates:
             r = model.predict(img_path, conf=conf, verbose=False)[0]
             cv2.imwrite(str(run_out / Path(img_path).name), r.plot())
+            if r.boxes is not None and len(r.boxes) > 0:
+                detected[img_path] += 1
         print(f"[INFO] saved detections to {run_out}")
+
+    # Keep images where at least one model detected a drone
+    kept = [img for img in candidates if detected[img] >= 1][:n_examples]
+    if not kept:
+        kept = candidates[:n_examples]    # fallback — accept zero-detection rows
+    print(f"[INFO] panel will use {len(kept)} of {len(candidates)} candidates")
 
     # composite panel
     n_runs = len(runs)
-    fig, axes = plt.subplots(n_examples, n_runs,
-                              figsize=(3.6 * n_runs, 3.6 * n_examples))
-    if n_examples == 1:
+    n_rows = len(kept)
+    fig, axes = plt.subplots(n_rows, n_runs,
+                              figsize=(3.6 * n_runs, 3.6 * n_rows))
+    if n_rows == 1:
         axes = np.array([axes])
     if n_runs == 1:
         axes = axes.reshape(-1, 1)
-    for i, img_path in enumerate(test_imgs):
+    for i, img_path in enumerate(kept):
         for j, (run, label) in enumerate(zip(runs, labels)):
             p = out_root / run / Path(img_path).name
             if not p.exists():
